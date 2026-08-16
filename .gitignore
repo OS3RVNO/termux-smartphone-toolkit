@@ -1,0 +1,17 @@
+# Local configuration and runtime state
+.zsh_history
+.cache/
+.config/termux-toolkit/
+storage/
+
+# Logs and generated media
+*.log
+*_compresso.mp4
+QR-*.png
+termux-toolkit-backup-*.tar.gz
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*~
