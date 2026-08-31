@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -Eeuo pipefail
 
 TOOLKIT_RELEASE='3.0'
@@ -72,7 +72,7 @@ done
 
 printf '\n[3/7] Creo il centro di controllo...\n'
 cat >"$BIN_DIR/termux-hub" <<'HUB'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -uo pipefail
 
 TOOLKIT_RELEASE='3.0'
@@ -116,14 +116,7 @@ local_ip() {
     value=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
   fi
   if [[ -z $value ]] && have python; then
-    value=$(python -c 'import socket
-s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-try:
- s.connect(("1.1.1.1",80)); print(s.getsockname()[0])
-except OSError:
- print("")
-finally:
- s.close()' 2>/dev/null)
+    value=$(python -c 'import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.connect(("1.1.1.1",80));print(s.getsockname()[0]);s.close()' 2>/dev/null || true)
   fi
   printf '%s\n' "${value:-N/D}"
 }
@@ -274,6 +267,11 @@ compress_video() {
   input=$(expand_path "$input")
   input=${input#\"}
   input=${input%\"}
+  # Validazione sicurezza: previene path traversal
+  input=$(realpath -e "$input" 2>/dev/null) || {
+    printf '%sPercorso non valido o inesistente: %s%s\n' "$RED" "${1:-}" "$RESET"
+    return 1
+  }
   if [[ ! -f $input ]]; then
     printf '%sFile inesistente: %s%s\n' "$RED" "$input" "$RESET"
     return 1
@@ -354,8 +352,8 @@ battery_check() {
   local data percentage status threshold reset_level
   local threshold_file="$CONFIG_DIR/battery-threshold"
   local marker="$STATE_DIR/battery-threshold-notified"
-  have termux-battery-status || exit 0
-  have jq || exit 0
+  have termux-battery-status || return 0
+  have jq || return 0
   threshold=80
   [[ -r $threshold_file ]] && read -r threshold <"$threshold_file"
   if [[ ! $threshold =~ ^[0-9]+$ ]] || ((threshold < 1 || threshold > 100)); then
@@ -363,7 +361,7 @@ battery_check() {
   fi
   reset_level=$((threshold > 5 ? threshold - 5 : 0))
   data=$(timeout 8 termux-battery-status 2>/dev/null || true)
-  [[ -n $data ]] || exit 0
+  [[ -n $data ]] || return 0
   percentage=$(jq -r '.percentage // 0' <<<"$data")
   status=$(jq -r '.status // "UNKNOWN"' <<<"$data")
   if [[ $percentage =~ ^[0-9]+$ ]] && ((percentage >= threshold)) && [[ $status == CHARGING || $status == FULL ]]; then
@@ -473,7 +471,14 @@ start_gui() {
 
   export DISPLAY="$display"
   export XDG_RUNTIME_DIR="${TMPDIR:-$PREFIX/tmp}"
-  mkdir -p "$XDG_RUNTIME_DIR"
+  # Validazione XDG_RUNTIME_DIR
+  if [[ ! -d $XDG_RUNTIME_DIR ]]; then
+    mkdir -p "$XDG_RUNTIME_DIR" || {
+      printf '%sImpossibile creare XDG_RUNTIME_DIR: %s%s\n' "$RED" "$XDG_RUNTIME_DIR" "$RESET"
+      return 1
+    }
+  fi
+  chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
   if ! have pgrep || ! pgrep -x termux-x11 >/dev/null 2>&1; then
     printf '%sAvvio il server Termux:X11...%s\n' "$CYAN" "$RESET"
@@ -597,7 +602,7 @@ esac
 HUB
 
 cat >"$BIN_DIR/termux-battery-check" <<'BATTERY'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 exec "$HOME/.local/bin/termux-hub" _battery-check
 BATTERY
 
